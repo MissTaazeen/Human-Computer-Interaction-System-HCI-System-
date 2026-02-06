@@ -1,5 +1,3 @@
-# src/app/main.py
-
 import cv2
 
 from core.camera import Camera

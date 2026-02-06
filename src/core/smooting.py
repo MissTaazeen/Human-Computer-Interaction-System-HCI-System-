@@ -1,5 +1,3 @@
-# src/core/smoothing.py
-
 from typing import Optional, Tuple
 
 

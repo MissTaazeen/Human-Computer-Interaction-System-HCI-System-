@@ -1,5 +1,3 @@
-# src/core/cursor_mapper.py
-
 from typing import Optional
 
 import pyautogui

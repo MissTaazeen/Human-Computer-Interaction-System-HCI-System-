@@ -1,5 +1,3 @@
-# src/core/hand_tracker.py
-
 from typing import List, Tuple
 
 import cv2

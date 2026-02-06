@@ -1,5 +1,3 @@
-# src/core/camera.py
-
 from typing import Optional, Tuple
 
 import cv2
