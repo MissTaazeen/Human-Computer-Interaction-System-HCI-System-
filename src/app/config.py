@@ -18,6 +18,8 @@ INDEX_FINGER_TIP: int = 8  # Used for cursor control in Phase 1
 # new = prev + (1 / SMOOTHING_FACTOR) * (target - prev)
 SMOOTHING_FACTOR: float = 7.0
 
+PINCH_THRESHOLD = 50
+ENABLE_CLICKS: bool = True
 
 def get_smoothing_alpha() -> float:
     """
