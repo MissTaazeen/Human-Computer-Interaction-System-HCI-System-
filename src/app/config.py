@@ -16,10 +16,12 @@ INDEX_FINGER_TIP: int = 8  # Used for cursor control in Phase 1
 # Cursor smoothing settings
 # Smoothing factor for EMA:
 # new = prev + (1 / SMOOTHING_FACTOR) * (target - prev)
-SMOOTHING_FACTOR: float = 7.0
+SMOOTHING_FACTOR: float = 12.0
 
-PINCH_THRESHOLD = 50
-ENABLE_CLICKS: bool = True
+PINCH_THRESHOLD = 40
+CLICK_COOLDOWN_FRAMES = 15
+
+ENABLE_CLICKS = False
 
 def get_smoothing_alpha() -> float:
     """

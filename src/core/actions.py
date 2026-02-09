@@ -1,21 +1,18 @@
 # src/core/actions.py
 
 """
-ActionController module for Phase 2 of the Hand Gesture HCI project.
+ActionController module for the Hand Gesture HCI project.
 
-This module defines the OS-level action layer.
+Phase 3 Features:
+- Left Click
+- Drag Start (mouseDown)
+- Drag End (mouseUp)
 
-Phase 2 Scope:
-- Only LEFT CLICK action (triggered by pinch gesture)
-
-Design Goals:
-- Safe wrapper around PyAutoGUI
-- Easy to mock in unit tests
-- Minimal responsibilities (gesture logic stays separate)
+This module is responsible ONLY for OS-level mouse actions.
+Gesture recognition remains inside GestureRecognizer.
 """
 
 from __future__ import annotations
-
 from typing import Optional
 
 import pyautogui
@@ -23,14 +20,12 @@ import pyautogui
 
 class ActionController:
     """
-    Executes system-level mouse actions.
+    Executes system-level mouse actions using PyAutoGUI.
 
-    This class is intentionally lightweight:
-    - Gesture detection happens elsewhere (GestureRecognizer)
-    - This class only performs actions like clicking
-
-    Mock-Friendly Design:
-    - PyAutoGUI dependency is injectable for pytest mocking
+    Phase 3 Actions:
+    - left_click()
+    - drag_start()
+    - drag_end()
     """
 
     def __init__(self, backend: Optional[object] = None) -> None:
@@ -39,16 +34,19 @@ class ActionController:
 
         Args:
             backend:
-                Optional dependency injection for PyAutoGUI.
-                In production, defaults to real pyautogui.
-                In tests, you can pass a MagicMock.
+                Dependency injection for testing.
+                Defaults to real pyautogui in production.
         """
         self._backend = backend if backend is not None else pyautogui
 
     def left_click(self) -> None:
-        """
-        Perform a single left mouse click.
-
-        Triggered only when GestureRecognizer detects a pinch START event.
-        """
+        """Perform a single left mouse click."""
         self._backend.click(button="left")
+
+    def drag_start(self) -> None:
+        """Press and hold the left mouse button (start dragging)."""
+        self._backend.mouseDown(button="left")
+
+    def drag_end(self) -> None:
+        """Release the left mouse button (drop)."""
+        self._backend.mouseUp(button="left")

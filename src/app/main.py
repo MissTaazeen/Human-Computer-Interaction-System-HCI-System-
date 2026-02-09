@@ -1,21 +1,5 @@
 # src/app/main.py
 
-"""
-Main application runner for the Hand Gesture HCI System.
-
-Phase 2 Features:
-- Phase 1: Smooth cursor movement using index fingertip tracking
-- Phase 2: Pinch gesture (thumb + index) triggers a LEFT CLICK once per pinch
-
-Modules Used:
-- Camera (webcam input)
-- HandTracker (MediaPipe landmark detection)
-- Smoother (cursor stabilization)
-- CursorMapper (frame → screen mapping)
-- GestureRecognizer (pinch + debounce click event)
-- ActionController (OS-level mouse click)
-"""
-
 import cv2
 
 from core.camera import Camera
@@ -47,22 +31,50 @@ def main() -> None:
     smoother = Smoother(alpha=config.get_smoothing_alpha())
     cursor_mapper = CursorMapper(smoother=smoother)
 
-    # Phase 2 components
     gesture_recognizer = GestureRecognizer(
         pinch_threshold=config.PINCH_THRESHOLD
     )
     action_controller = ActionController()
 
-    # Click feedback timer
+    # -------------------------------
+    # Feedback + Cooldown
+    # -------------------------------
     click_feedback_frames = 0
+    click_cooldown = 0
+
+    # -------------------------------
+    # Soft Reacquire State
+    # -------------------------------
+    hand_visible = False
+    reacquire_frames = 0
+    REACQUIRE_DELAY = 2
+
+    # -------------------------------
+    # Phase 3 Drag State
+    # -------------------------------
+    drag_active = False
 
     try:
         while True:
             frame = camera.get_frame()
-            if frame is None:
-                break
 
-            # Detect hand landmarks
+            if frame is None:
+                print("⚠️ Frame not received. Camera glitch. Continuing...")
+                continue
+
+        try:
+            annotated_frame, landmarks = hand_tracker.detect(frame, draw=True)
+        except Exception as e:
+            print("❌ MediaPipe crashed:", e)
+        continue
+
+        cv2.imshow("Hand Gesture HCI", annotated_frame)
+
+        key = cv2.waitKey(10)
+        if key == ord("q"):
+            break
+
+
             annotated_frame, landmarks = hand_tracker.detect(frame, draw=True)
 
             # -------------------------------
@@ -76,35 +88,66 @@ def main() -> None:
                 if index_points:
                     _, x, y = index_points[0]
 
-                    frame_height, frame_width, _ = annotated_frame.shape
+                    # Hand just re-entered → short delay
+                    if not hand_visible:
+                        hand_visible = True
+                        reacquire_frames = REACQUIRE_DELAY
 
-                    cursor_mapper.move_cursor(
-                        x_frame=x,
-                        y_frame=y,
-                        frame_width=frame_width,
-                        frame_height=frame_height,
-                    )
+                    # Wait before resuming movement
+                    if reacquire_frames > 0:
+                        reacquire_frames -= 1
+                    else:
+                        frame_height, frame_width, _ = annotated_frame.shape
 
-                    # Draw fingertip marker
-                    cv2.circle(
-                        annotated_frame,
-                        (x, y),
-                        8,
-                        (0, 255, 255),
-                        -1,
-                    )
+                        cursor_mapper.move_cursor(
+                            x_frame=x,
+                            y_frame=y,
+                            frame_width=frame_width,
+                            frame_height=frame_height,
+                        )
 
-            # -------------------------------
-            # Phase 2: Pinch Click Detection
-            # -------------------------------
-            if landmarks:
-                if gesture_recognizer.detect_click_event(landmarks):
-                    action_controller.left_click()
-                    click_feedback_frames = 10  # show "CLICK" for ~10 frames
+                    # Fingertip marker
+                    cv2.circle(annotated_frame, (x, y), 8, (0, 255, 255), -1)
 
             else:
-                # Reset pinch state if hand disappears
+                # Hand lost → freeze cursor + force drop
+                hand_visible = False
+                reacquire_frames = 0
                 gesture_recognizer.reset_state()
+
+                if drag_active:
+                    action_controller.drag_end()
+                    drag_active = False
+
+            # -------------------------------
+            # Phase 3: Drag & Drop Logic
+            # -------------------------------
+            if landmarks and reacquire_frames == 0:
+
+                # Drag mode: pinch is held
+                if gesture_recognizer.is_dragging():
+
+                    if not drag_active:
+                        action_controller.drag_start()
+                        drag_active = True
+
+                else:
+                    # Pinch released → drop
+                    if drag_active:
+                        action_controller.drag_end()
+                        drag_active = False
+
+                # Optional click (quick pinch)
+                if click_cooldown > 0:
+                    click_cooldown -= 1
+
+                if gesture_recognizer.detect_click_event(landmarks):
+                    if click_cooldown == 0:
+                        if config.ENABLE_CLICKS:
+                            action_controller.left_click()
+
+                        click_feedback_frames = 10
+                        click_cooldown = config.CLICK_COOLDOWN_FRAMES
 
             # -------------------------------
             # Visual Feedback Overlay
@@ -121,15 +164,33 @@ def main() -> None:
                 )
                 click_feedback_frames -= 1
 
-            # Display window
-            cv2.imshow("Hand Gesture HCI - Phase 2 (Pinch Click)", annotated_frame)
+            if drag_active:
+                cv2.putText(
+                    annotated_frame,
+                    "DRAGGING",
+                    (30, 140),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    1.5,
+                    (0, 0, 255),
+                    4,
+                )
 
-            # Quit on 'q'
+            cv2.putText(
+                annotated_frame,
+                f"Reacquire: {reacquire_frames}",
+                (30, 200),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                1,
+                (255, 255, 255),
+                2,
+            )
+
+            cv2.imshow("Hand Gesture HCI - Phase 3 (Drag & Drop)", annotated_frame)
+
             if cv2.waitKey(1) & 0xFF == ord("q"):
                 break
 
     finally:
-        # Clean shutdown
         hand_tracker.close()
         camera.release()
         cv2.destroyAllWindows()
@@ -137,8 +198,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
-if gesture_recognizer.detect_click_event(landmarks):
-    if config.ENABLE_CLICKS:
-        action_controller.left_click()
-    click_feedback_frames = 10
