@@ -1,12 +1,4 @@
-# src/core/actions.py
-
-"""
-ActionController module (Phase 2)
-
-Only action:
-- Left Click
-"""
-
+from __future__ import annotations
 from typing import Optional
 import pyautogui
 
@@ -16,5 +8,10 @@ class ActionController:
         self._backend = backend if backend is not None else pyautogui
 
     def left_click(self) -> None:
-        """Perform a single left mouse click."""
         self._backend.click(button="left")
+
+    def drag_start(self) -> None:
+        self._backend.mouseDown(button="left")
+
+    def drag_end(self) -> None:
+        self._backend.mouseUp(button="left")
