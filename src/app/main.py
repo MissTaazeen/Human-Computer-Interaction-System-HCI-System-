@@ -13,6 +13,7 @@ from app import config
 
 
 def main() -> None:
+
     # -------------------------------
     # Initialize Core Components
     # -------------------------------
@@ -34,120 +35,102 @@ def main() -> None:
     gesture_recognizer = GestureRecognizer(
         pinch_threshold=config.PINCH_THRESHOLD
     )
+
     action_controller = ActionController()
 
     # -------------------------------
-    # Feedback + Cooldown
+    # Click Feedback + Cooldown
     # -------------------------------
     click_feedback_frames = 0
     click_cooldown = 0
 
     # -------------------------------
-    # Soft Reacquire State
+    # Hand Reacquire Delay
     # -------------------------------
     hand_visible = False
     reacquire_frames = 0
-    REACQUIRE_DELAY = 2
 
-    # -------------------------------
-    # Phase 3 Drag State
-    # -------------------------------
-    drag_active = False
+    REACQUIRE_DELAY = 6  # wait 6 frames after hand returns
 
     try:
         while True:
-            frame = camera.get_frame()
 
+            frame = camera.get_frame()
             if frame is None:
-                print("⚠️ Frame not received. Camera glitch. Continuing...")
                 continue
 
-        try:
             annotated_frame, landmarks = hand_tracker.detect(frame, draw=True)
-        except Exception as e:
-            print("❌ MediaPipe crashed:", e)
-        continue
 
-        cv2.imshow("Hand Gesture HCI", annotated_frame)
+            # -------------------------------
+            # HAND LOST → Freeze Cursor
+            # -------------------------------
+            if not landmarks:
+                hand_visible = False
+                reacquire_frames = 0
+                gesture_recognizer.reset_state()
 
-        key = cv2.waitKey(10)
-        if key == ord("q"):
-            break
+                cv2.imshow("Hand Gesture HCI - Phase 2", annotated_frame)
 
+                if cv2.waitKey(1) & 0xFF == ord("q"):
+                    break
 
-            annotated_frame, landmarks = hand_tracker.detect(frame, draw=True)
+                continue
+
+            # -------------------------------
+            # HAND RE-ENTERED → Start Delay
+            # -------------------------------
+            if not hand_visible:
+                hand_visible = True
+                reacquire_frames = REACQUIRE_DELAY
+
+            # Reduce delay counter
+            if reacquire_frames > 0:
+                reacquire_frames -= 1
 
             # -------------------------------
             # Phase 1: Cursor Movement
+            # Only after delay finishes
             # -------------------------------
-            if landmarks:
+            if reacquire_frames == 0:
+
                 index_points = [
-                    lm for lm in landmarks if lm[0] == config.INDEX_FINGER_TIP
+                    lm for lm in landmarks
+                    if lm[0] == config.INDEX_FINGER_TIP
                 ]
 
                 if index_points:
                     _, x, y = index_points[0]
 
-                    # Hand just re-entered → short delay
-                    if not hand_visible:
-                        hand_visible = True
-                        reacquire_frames = REACQUIRE_DELAY
+                    h, w, _ = annotated_frame.shape
 
-                    # Wait before resuming movement
-                    if reacquire_frames > 0:
-                        reacquire_frames -= 1
-                    else:
-                        frame_height, frame_width, _ = annotated_frame.shape
+                    cursor_mapper.move_cursor(
+                        x_frame=x,
+                        y_frame=y,
+                        frame_width=w,
+                        frame_height=h,
+                    )
 
-                        cursor_mapper.move_cursor(
-                            x_frame=x,
-                            y_frame=y,
-                            frame_width=frame_width,
-                            frame_height=frame_height,
-                        )
-
-                    # Fingertip marker
-                    cv2.circle(annotated_frame, (x, y), 8, (0, 255, 255), -1)
-
-            else:
-                # Hand lost → freeze cursor + force drop
-                hand_visible = False
-                reacquire_frames = 0
-                gesture_recognizer.reset_state()
-
-                if drag_active:
-                    action_controller.drag_end()
-                    drag_active = False
+                    cv2.circle(
+                        annotated_frame,
+                        (x, y),
+                        8,
+                        (0, 255, 255),
+                        -1,
+                    )
 
             # -------------------------------
-            # Phase 3: Drag & Drop Logic
+            # Phase 2: Pinch Click Detection
             # -------------------------------
-            if landmarks and reacquire_frames == 0:
+            if click_cooldown > 0:
+                click_cooldown -= 1
 
-                # Drag mode: pinch is held
-                if gesture_recognizer.is_dragging():
+            if gesture_recognizer.detect_click_event(landmarks):
+                if click_cooldown == 0:
+                    if config.ENABLE_CLICKS:
+                        action_controller.left_click()
 
-                    if not drag_active:
-                        action_controller.drag_start()
-                        drag_active = True
-
-                else:
-                    # Pinch released → drop
-                    if drag_active:
-                        action_controller.drag_end()
-                        drag_active = False
-
-                # Optional click (quick pinch)
-                if click_cooldown > 0:
-                    click_cooldown -= 1
-
-                if gesture_recognizer.detect_click_event(landmarks):
-                    if click_cooldown == 0:
-                        if config.ENABLE_CLICKS:
-                            action_controller.left_click()
-
-                        click_feedback_frames = 10
-                        click_cooldown = config.CLICK_COOLDOWN_FRAMES
+                    click_feedback_frames = 10
+                    click_cooldown = config.CLICK_COOLDOWN_FRAMES
 
             # -------------------------------
             # Visual Feedback Overlay
@@ -164,28 +147,19 @@ def main() -> None:
                 )
                 click_feedback_frames -= 1
 
-            if drag_active:
-                cv2.putText(
-                    annotated_frame,
-                    "DRAGGING",
-                    (30, 140),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    1.5,
-                    (0, 0, 255),
-                    4,
-                )
-
+            # Debug: Reacquire counter
             cv2.putText(
                 annotated_frame,
                 f"Reacquire: {reacquire_frames}",
-                (30, 200),
+                (30, 140),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 1,
                 (255, 255, 255),
                 2,
             )
 
-            cv2.imshow("Hand Gesture HCI - Phase 3 (Drag & Drop)", annotated_frame)
+            # Show window
+            cv2.imshow("Hand Gesture HCI - Phase 2", annotated_frame)
 
             if cv2.waitKey(1) & 0xFF == ord("q"):
                 break
