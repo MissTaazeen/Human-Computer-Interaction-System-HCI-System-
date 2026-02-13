@@ -1,103 +1,107 @@
 import sys
-import threading
+import cv2
 
-from PySide6.QtWidgets import (
+from PyQt5.QtWidgets import (
     QApplication,
     QWidget,
-    QLabel,
     QPushButton,
     QVBoxLayout,
-    QSlider,
-    QCheckBox,
+    QLabel,
 )
-from PySide6.QtCore import Qt
+from PyQt5.QtCore import QThread, pyqtSignal
+from PyQt5.QtGui import QImage, QPixmap
 
-from app.main import main
-from app.settings_manager import load_settings, save_settings
+from core.gesture_engine import GestureEngine
+
+
+class EngineThread(QThread):
+    frame_signal = pyqtSignal(object)
+
+    def __init__(self):
+        super().__init__()
+        self.engine = GestureEngine()
+
+    def run(self):
+        self.engine.running = True
+
+        while self.engine.running:
+            frame = self.engine.camera.get_frame()
+            if frame is None:
+                continue
+
+            annotated, landmarks = self.engine.tracker.detect(frame, draw=True)
+
+            # Gesture logic
+            if landmarks:
+                self.engine.recognizer.detect_click_event(landmarks)
+
+            # Emit frame to GUI
+            self.frame_signal.emit(annotated)
+
+        self.engine.stop()
+
+    def stop(self):
+        self.engine.running = False
 
 
 class GestureApp(QWidget):
     def __init__(self):
         super().__init__()
 
-        self.setWindowTitle("Hand Gesture HCI System")
-        self.setFixedSize(500, 400)
+        self.setWindowTitle("Hand Gesture Controller - Phase 4")
 
-        self.settings = load_settings()
+        self.thread = None
 
         layout = QVBoxLayout()
 
-        # -------------------------------
-        # Title
-        # -------------------------------
-        title = QLabel("Hand Gesture Controlled HCI")
-        title.setStyleSheet("font-size:20px; font-weight:bold;")
-        layout.addWidget(title)
+        # Camera Display Label
+        self.video_label = QLabel("Camera Feed Here")
+        layout.addWidget(self.video_label)
 
-        # -------------------------------
-        # Start Button
-        # -------------------------------
-        self.start_btn = QPushButton("Start Gesture Control")
+        # Buttons
+        self.start_btn = QPushButton("Start Controller")
+        self.stop_btn = QPushButton("Stop Controller")
+
         self.start_btn.clicked.connect(self.start_engine)
+        self.stop_btn.clicked.connect(self.stop_engine)
+
         layout.addWidget(self.start_btn)
-
-        # -------------------------------
-        # Pinch Threshold Slider
-        # -------------------------------
-        self.threshold_label = QLabel(
-            f"Pinch Threshold: {self.settings['pinch_threshold']}"
-        )
-        layout.addWidget(self.threshold_label)
-
-        self.threshold_slider = QSlider(Qt.Horizontal)
-        self.threshold_slider.setMinimum(20)
-        self.threshold_slider.setMaximum(80)
-        self.threshold_slider.setValue(self.settings["pinch_threshold"])
-        self.threshold_slider.valueChanged.connect(self.update_threshold)
-        layout.addWidget(self.threshold_slider)
-
-        # -------------------------------
-        # Enable Click Toggle
-        # -------------------------------
-        self.click_toggle = QCheckBox("Enable Click Gesture")
-        self.click_toggle.setChecked(self.settings["enable_clicks"])
-        self.click_toggle.stateChanged.connect(self.update_click_toggle)
-        layout.addWidget(self.click_toggle)
-
-        # -------------------------------
-        # Save Button
-        # -------------------------------
-        save_btn = QPushButton("Save Settings")
-        save_btn.clicked.connect(self.save_all_settings)
-        layout.addWidget(save_btn)
+        layout.addWidget(self.stop_btn)
 
         self.setLayout(layout)
 
-    # -------------------------------
-    # Run Gesture Engine
-    # -------------------------------
     def start_engine(self):
-        thread = threading.Thread(target=main)
-        thread.daemon = True
-        thread.start()
+        if self.thread is None:
+            self.thread = EngineThread()
+            self.thread.frame_signal.connect(self.update_frame)
+            self.thread.start()
 
-    # -------------------------------
-    # Update Threshold Live
-    # -------------------------------
-    def update_threshold(self, value):
-        self.settings["pinch_threshold"] = value
-        self.threshold_label.setText(f"Pinch Threshold: {value}")
+    def stop_engine(self):
+        if self.thread:
+            self.thread.stop()
+            self.thread = None
 
-    def update_click_toggle(self):
-        self.settings["enable_clicks"] = self.click_toggle.isChecked()
+    def update_frame(self, frame):
+        """Convert OpenCV frame → Qt image"""
+        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        h, w, ch = rgb.shape
+        bytes_per_line = ch * w
 
-    def save_all_settings(self):
-        save_settings(self.settings)
-        self.threshold_label.setText("Settings Saved ✔")
+        qt_img = QImage(
+            rgb.data,
+            w,
+            h,
+            bytes_per_line,
+            QImage.Format_RGB888,
+        )
+
+        self.video_label.setPixmap(QPixmap.fromImage(qt_img))
 
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
+
     window = GestureApp()
     window.show()
-    sys.exit(app.exec())
+
+    sys.exit(app.exec_())
