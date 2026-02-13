@@ -5,25 +5,30 @@ class GestureRecognizer:
     """
     Phase 3 Gesture Recognizer
 
-    - Short pinch → Click
-    - Long pinch hold → Drag
+    Supports:
+    ✅ Click = quick pinch start (instant)
+    ✅ Drag  = pinch held for longer duration
     """
 
     def __init__(self, pinch_threshold: int = 40) -> None:
         self.THUMB_TIP = 4
         self.INDEX_TIP = 8
 
+        # Pinch thresholds
         self.PINCH_ON = pinch_threshold
         self.PINCH_OFF = pinch_threshold + 25
 
-        # Frames
-        self.CLICK_FRAMES = 6
-        self.DRAG_FRAMES = 15
+        # Drag timing
+        self.DRAG_HOLD_FRAMES = 8
 
+        # Internal state
+        self._pinch_active = False
         self._pinch_frames = 0
         self._dragging = False
-        self._click_sent = False
 
+    # ------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------
     def _get_point(
         self,
         landmarks: List[Tuple[int, int, int]],
@@ -37,7 +42,10 @@ class GestureRecognizer:
     def _distance(self, p1: Tuple[int, int], p2: Tuple[int, int]) -> float:
         return ((p2[0] - p1[0]) ** 2 + (p2[1] - p1[1]) ** 2) ** 0.5
 
-    def pinch_active(self, landmarks: List[Tuple[int, int, int]]) -> bool:
+    # ------------------------------------------------------------
+    # Raw Pinch Detection
+    # ------------------------------------------------------------
+    def is_pinch(self, landmarks: List[Tuple[int, int, int]]) -> bool:
         if not landmarks:
             return False
 
@@ -49,41 +57,44 @@ class GestureRecognizer:
 
         return self._distance(thumb, index) <= self.PINCH_ON
 
-    # -----------------------------
-    # Click (Short Pinch)
-    # -----------------------------
+    # ------------------------------------------------------------
+    # CLICK Event (Instant Pinch Start)
+    # ------------------------------------------------------------
     def detect_click_event(self, landmarks: List[Tuple[int, int, int]]) -> bool:
+        """
+        Click happens instantly when pinch starts:
+        False → True transition
+        """
+
         if not landmarks:
             self.reset_state()
             return False
 
-        if self.pinch_active(landmarks):
+        current_pinch = self.is_pinch(landmarks)
 
-            self._pinch_frames += 1
+        click = False
+        if current_pinch and not self._pinch_active:
+            click = True
 
-            if (
-                self._pinch_frames == self.CLICK_FRAMES
-                and not self._dragging
-                and not self._click_sent
-            ):
-                self._click_sent = True
-                return True
+        self._pinch_active = current_pinch
+        return click
 
-        return False
-
-    # -----------------------------
-    # Drag (Long Pinch Hold)
-    # -----------------------------
+    # ------------------------------------------------------------
+    # DRAG State Update (Long Hold)
+    # ------------------------------------------------------------
     def update_drag_state(self, landmarks: List[Tuple[int, int, int]]) -> None:
+        """
+        Drag activates only if pinch is held for DRAG_HOLD_FRAMES.
+        """
+
         if not landmarks:
             self.reset_state()
             return
 
-        if self.pinch_active(landmarks):
-
+        if self.is_pinch(landmarks):
             self._pinch_frames += 1
 
-            if self._pinch_frames >= self.DRAG_FRAMES:
+            if self._pinch_frames >= self.DRAG_HOLD_FRAMES:
                 self._dragging = True
 
         else:
@@ -92,10 +103,10 @@ class GestureRecognizer:
     def is_dragging(self) -> bool:
         return self._dragging
 
-    # -----------------------------
+    # ------------------------------------------------------------
     # Reset
-    # -----------------------------
+    # ------------------------------------------------------------
     def reset_state(self) -> None:
+        self._pinch_active = False
         self._pinch_frames = 0
         self._dragging = False
-        self._click_sent = False

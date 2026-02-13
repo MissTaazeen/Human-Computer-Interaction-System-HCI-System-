@@ -11,6 +11,9 @@ from app import config
 
 def main() -> None:
 
+    # -----------------------------
+    # Initialize Components
+    # -----------------------------
     camera = Camera(
         device_index=config.CAMERA_INDEX,
         frame_width=config.FRAME_WIDTH,
@@ -32,22 +35,33 @@ def main() -> None:
 
     action_controller = ActionController()
 
+    # -----------------------------
+    # Drag State
+    # -----------------------------
     drag_active = False
 
     try:
         while True:
+
+            # -----------------------------
+            # Step 1: Read Frame
+            # -----------------------------
             frame = camera.get_frame()
             if frame is None:
                 continue
 
+            # -----------------------------
+            # Step 2: Detect Hand
+            # -----------------------------
             annotated_frame, landmarks = hand_tracker.detect(frame, draw=True)
 
             # -----------------------------
-            # Cursor Movement
+            # Step 3: Cursor Movement
             # -----------------------------
             if landmarks:
                 index_points = [
-                    lm for lm in landmarks if lm[0] == config.INDEX_FINGER_TIP
+                    lm for lm in landmarks
+                    if lm[0] == config.INDEX_FINGER_TIP
                 ]
 
                 if index_points:
@@ -61,35 +75,58 @@ def main() -> None:
                         frame_height=h,
                     )
 
-            # -----------------------------
-            # Drag Update (EVERY FRAME)
-            # -----------------------------
+                    # Fingertip marker
+                    cv2.circle(
+                        annotated_frame,
+                        (x, y),
+                        8,
+                        (0, 255, 255),
+                        -1,
+                    )
+
+            # =====================================================
+            # ✅ PHASE 3: DRAG LOGIC (Update FIRST)
+            # =====================================================
+
             gesture_recognizer.update_drag_state(landmarks)
 
+            # -----------------------------
+            # Drag Start
+            # -----------------------------
             if gesture_recognizer.is_dragging():
                 if not drag_active:
+                    print("DRAG START")
                     action_controller.drag_start()
                     drag_active = True
+
+            # -----------------------------
+            # Drag End
+            # -----------------------------
             else:
                 if drag_active:
+                    print("DRAG END")
                     action_controller.drag_end()
                     drag_active = False
 
-            # -----------------------------
-            # Click Detection (Short Pinch)
-            # -----------------------------
-            if gesture_recognizer.detect_click_event(landmarks):
-                action_controller.left_click()
+            # =====================================================
+            # ✅ PHASE 2: CLICK LOGIC (Only if NOT dragging)
+            # =====================================================
+
+            if not drag_active:
+                if gesture_recognizer.detect_click_event(landmarks):
+                    print("CLICK")
+                    action_controller.left_click()
 
             # -----------------------------
-            # Display ONE Window Only
+            # Display Window (ONLY ONE)
             # -----------------------------
-            cv2.imshow("Hand Gesture HCI", annotated_frame)
+            cv2.imshow("Hand Gesture HCI - Phase 3", annotated_frame)
 
             if cv2.waitKey(1) & 0xFF == ord("q"):
                 break
 
     finally:
+        # Safety drop
         if drag_active:
             action_controller.drag_end()
 
