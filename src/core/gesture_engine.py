@@ -1,3 +1,5 @@
+import cv2
+
 from core.camera import Camera
 from core.hand_tracker import HandTracker
 from core.cursor_mapper import CursorMapper
@@ -10,14 +12,28 @@ from app import config
 
 class GestureEngine:
     """
-    Runs gesture pipeline without OpenCV display.
-    GUI handles visualization.
+    Phase 4 Gesture Engine (GUI Mode)
+
+    Runs:
+    Camera → Hand Tracking → Cursor Movement → Click
+
+    IMPORTANT:
+    - No cv2.imshow()
+    - Frames stored in latest_frame for GUI
     """
 
     def __init__(self):
         self.running = False
 
-        self.camera = Camera()
+        # -----------------------------
+        # Core Components
+        # -----------------------------
+        self.camera = Camera(
+            device_index=config.CAMERA_INDEX,
+            frame_width=config.FRAME_WIDTH,
+            frame_height=config.FRAME_HEIGHT,
+        )
+
         self.tracker = HandTracker(
             max_num_hands=config.MAX_NUM_HANDS,
             detection_confidence=config.DETECTION_CONFIDENCE,
@@ -33,8 +49,19 @@ class GestureEngine:
 
         self.actions = ActionController()
 
+        # -----------------------------
+        # GUI Runtime Settings
+        # -----------------------------
+        self.enable_clicks = True
+
+        # Latest Frame for GUI Display
+        self.latest_frame = None
+
+    # -----------------------------
+    # Main Loop (Thread)
+    # -----------------------------
     def start(self):
-        """Main loop"""
+        """Runs gesture controller loop inside QThread"""
         self.running = True
 
         while self.running:
@@ -44,7 +71,9 @@ class GestureEngine:
 
             annotated, landmarks = self.tracker.detect(frame, draw=True)
 
-            # Cursor movement
+            # -----------------------------
+            # Cursor Movement
+            # -----------------------------
             if landmarks:
                 index_points = [
                     lm for lm in landmarks
@@ -62,15 +91,25 @@ class GestureEngine:
                         frame_height=h,
                     )
 
-            # Click detection
+            # -----------------------------
+            # Click Detection
+            # -----------------------------
             if landmarks:
                 if self.recognizer.detect_click_event(landmarks):
-                    if config.ENABLE_CLICKS:
+                    if self.enable_clicks:
                         self.actions.left_click()
 
-        self.stop()
+            # -----------------------------
+            # Store Frame for GUI
+            # -----------------------------
+            self.latest_frame = annotated.copy()
 
+    # -----------------------------
+    # Stop Engine Safely
+    # -----------------------------
     def stop(self):
+        """Stops gesture loop and releases resources"""
         self.running = False
+
         self.camera.release()
         self.tracker.close()
