@@ -1,5 +1,20 @@
-# PyInstaller output
+# -----------------------------
+# Python Cache (IMPORTANT)
+# -----------------------------
+__pycache__/
+*.pyc
+*.pyo
+
+# Virtual Environment
+.venv/
+
+# -----------------------------
+# PyInstaller output folders
+# -----------------------------
 dist/
 build/
+
+# Executables
 *.exe
 *.pkg
+*.spec
