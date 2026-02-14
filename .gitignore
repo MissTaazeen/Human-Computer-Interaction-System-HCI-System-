@@ -1,38 +1,5 @@
-# Python virtual environment
-.venv/
-venv/
-env/
-
-# Python cache
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-
-# pytest cache
-.pytest_cache/
-.coverage
-htmlcov/
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Project specific
-*.log
-.DS_Store
-
-# PyInstaller build output
+# PyInstaller output
 dist/
 build/
-*.spec
-
-# Windows executable
 *.exe
-
+*.pkg
