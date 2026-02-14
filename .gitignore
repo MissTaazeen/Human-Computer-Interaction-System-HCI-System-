@@ -1,5 +1,7 @@
-# PyInstaller output
+# PyInstaller output folders
 dist/
 build/
+
+# Executables
 *.exe
 *.pkg
