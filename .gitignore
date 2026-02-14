@@ -27,3 +27,12 @@ Thumbs.db
 # Project specific
 *.log
 .DS_Store
+
+# PyInstaller build output
+dist/
+build/
+*.spec
+
+# Windows executable
+*.exe
+
