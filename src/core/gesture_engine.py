@@ -14,12 +14,14 @@ class GestureEngine:
     """
     Phase 4 Gesture Engine (GUI Mode)
 
-    Runs:
-    Camera → Hand Tracking → Cursor Movement → Click
+    Pipeline:
+    Camera → Hand Tracking → Cursor Move → Click/Drag Actions
 
-    IMPORTANT:
+    Features:
     - No cv2.imshow()
-    - Frames stored in latest_frame for GUI
+    - Frames stored for GUI display
+    - Cursor freezes when hand is lost
+    - Click + Drag fully supported
     """
 
     def __init__(self):
@@ -40,29 +42,32 @@ class GestureEngine:
             tracking_confidence=config.TRACKING_CONFIDENCE,
         )
 
+        # Smoother + Cursor Mapper
         self.smoother = Smoother(alpha=config.get_smoothing_alpha())
         self.mapper = CursorMapper(self.smoother)
 
+        # Gesture Recognition
         self.recognizer = GestureRecognizer(
             pinch_threshold=config.PINCH_THRESHOLD
         )
 
+        # Mouse Actions
         self.actions = ActionController()
 
-        # -----------------------------
-        # GUI Runtime Settings
-        # -----------------------------
-        self.enable_clicks = True
-
-        # Latest Frame for GUI Display
+        # GUI Frame Output
         self.latest_frame = None
 
+        # Toggle Clicks
+        self.enable_clicks = config.ENABLE_CLICKS
+        self.enable_drag = True
+
     # -----------------------------
-    # Main Loop (Thread)
+    # Start Engine Loop
     # -----------------------------
     def start(self):
-        """Runs gesture controller loop inside QThread"""
+        """Main gesture loop (runs inside QThread)."""
         self.running = True
+        print("Gesture Engine Started...")
 
         while self.running:
             frame = self.camera.get_frame()
@@ -75,6 +80,8 @@ class GestureEngine:
             # Cursor Movement
             # -----------------------------
             if landmarks:
+                self.mapper.resume()
+
                 index_points = [
                     lm for lm in landmarks
                     if lm[0] == config.INDEX_FINGER_TIP
@@ -91,25 +98,54 @@ class GestureEngine:
                         frame_height=h,
                     )
 
-            # -----------------------------
-            # Click Detection
-            # -----------------------------
-            if landmarks:
-                if self.recognizer.detect_click_event(landmarks):
-                    if self.enable_clicks:
-                        self.actions.left_click()
+            else:
+                # Hand lost → freeze cursor + stop drag
+                self.mapper.freeze()
+                self.actions.stop_drag()
+                self.recognizer.reset_state()
 
             # -----------------------------
-            # Store Frame for GUI
+            # Gesture Actions (Click + Drag)
             # -----------------------------
-            self.latest_frame = annotated.copy()
+            if landmarks:
+                # Update drag state every frame
+                self.recognizer.update_drag_state(landmarks)
+
+                # ---- DRAG MODE ----
+                if self.recognizer.is_dragging() and self.enable_drag:
+                    self.actions.start_drag()
+                else:
+                    self.actions.stop_drag()
+
+
+                else:
+                    # Release mouse if not dragging
+                    self.actions.stop_drag()
+
+                    # Click ONLY when not dragging
+                    if self.recognizer.detect_click_event(landmarks):
+                        if self.enable_clicks:
+                            self.actions.left_click()
+
+            # -----------------------------
+            # Store latest frame for GUI
+            # -----------------------------
+            self.latest_frame = annotated
 
     # -----------------------------
     # Stop Engine Safely
     # -----------------------------
     def stop(self):
-        """Stops gesture loop and releases resources"""
+        """Stop engine safely and release resources."""
+        print("Stopping Gesture Engine...")
+
         self.running = False
 
+        # Always release drag before exit
+        self.actions.stop_drag()
+
+        # Release camera + tracker
         self.camera.release()
         self.tracker.close()
+
+        print("Gesture Engine Stopped.")

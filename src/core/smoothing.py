@@ -3,53 +3,62 @@ from typing import Optional, Tuple
 
 class Smoother:
     """
-    Cursor position smoother for gesture-controlled mouse.
+    Cursor smoothing using Exponential Moving Average (EMA).
 
-    Uses an exponential moving average (EMA)-style update:
-        prev + alpha * (target - prev)
-
-    This reduces jitter from noisy hand landmarks while keeping the cursor responsive.
+    Includes a hard-stop threshold to prevent cursor coasting
+    when the hand stops moving.
     """
 
-    def __init__(self, alpha: float = 0.2) -> None:
-        """
-        Args:
-            alpha: Smoothing factor in (0, 1].
-                   - Smaller alpha  -> more smoothing, more lag.
-                   - Larger alpha   -> less smoothing, more responsive.
-        """
+    def __init__(self, alpha: float = 0.15) -> None:
         if not (0.0 < alpha <= 1.0):
-            raise ValueError("alpha must be in the range (0, 1].")
+            raise ValueError("alpha must be in range (0, 1].")
 
         self._alpha = alpha
         self._prev_x: Optional[float] = None
         self._prev_y: Optional[float] = None
 
+    # -----------------------------
+    # Helpers
+    # -----------------------------
+    def has_state(self) -> bool:
+        return self._prev_x is not None and self._prev_y is not None
+
     def reset(self) -> None:
-        """Reset internal state (e.g., when tracking is lost)."""
+        """Hard reset smoother state."""
         self._prev_x = None
         self._prev_y = None
 
+    # -----------------------------
+    # Main Smoothing Function
+    # -----------------------------
     def smooth(self, target_x: float, target_y: float) -> Tuple[float, float]:
         """
-        Smooth the incoming cursor target position.
+        Smooth incoming target coordinates.
 
-        Args:
-            target_x: Raw target x-coordinate (e.g., mapped from hand landmark).
-            target_y: Raw target y-coordinate.
-
-        Returns:
-            (smooth_x, smooth_y): Smoothed coordinates suitable for cursor movement.
+        Prevents drift/coasting by snapping when movement is tiny.
         """
-        if self._prev_x is None or self._prev_y is None:
-            # First value, no previous state to smooth with.
+
+        # First-time initialization
+        if not self.has_state():
             self._prev_x = float(target_x)
             self._prev_y = float(target_y)
             return self._prev_x, self._prev_y
 
-        # Exponential moving average update:
-        # new = prev + alpha * (target - prev)
-        self._prev_x = self._prev_x + self._alpha * (target_x - self._prev_x)
-        self._prev_y = self._prev_y + self._alpha * (target_y - self._prev_y)
+        # Compute distance from current smoothed point to target
+        dx = target_x - self._prev_x
+        dy = target_y - self._prev_y
+        dist = (dx * dx + dy * dy) ** 0.5
+
+        # -----------------------------
+        # HARD STOP (Prevents Coasting)
+        # -----------------------------
+        if dist < 3.0:
+            self._prev_x = float(target_x)
+            self._prev_y = float(target_y)
+            return self._prev_x, self._prev_y
+
+        # Normal EMA update
+        self._prev_x = self._prev_x + self._alpha * dx
+        self._prev_y = self._prev_y + self._alpha * dy
 
         return self._prev_x, self._prev_y
