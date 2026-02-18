@@ -1,25 +1,40 @@
-# src/core/gesture_recognizer.py
-
-"""
-GestureRecognizer module (Phase 2)
-
-Features:
-- Pinch detection (Thumb + Index)
-- Debounced click event (one click per pinch)
-- Reset when hand disappears
-"""
-
 from typing import List, Tuple, Optional
 
 
 class GestureRecognizer:
+    """
+    Phase 4 Gesture Recognizer
+
+    Supports:
+    - Click (short pinch)
+    - Drag (long pinch hold)
+    """
+
     def __init__(self, pinch_threshold: int = 40) -> None:
         self.THUMB_TIP = 4
         self.INDEX_TIP = 8
 
-        self._pinch_threshold = pinch_threshold
-        self._pinch_active = False
+        self.PINCH_ON = pinch_threshold
+        self.PINCH_OFF = pinch_threshold + 25
 
+        # Timing thresholds
+        self.CLICK_HOLD_FRAMES = 3
+        self.DRAG_HOLD_FRAMES = 6
+
+        self._pinch_frames = 0
+        self._dragging = False
+        self._click_sent = False
+
+    # -----------------------------
+    # Update Threshold (GUI Slider)
+    # -----------------------------
+    def update_threshold(self, new_value: int):
+        self.PINCH_ON = new_value
+        self.PINCH_OFF = new_value + 25
+
+    # -----------------------------
+    # Helpers
+    # -----------------------------
     def _get_point(
         self,
         landmarks: List[Tuple[int, int, int]],
@@ -33,7 +48,10 @@ class GestureRecognizer:
     def _distance(self, p1: Tuple[int, int], p2: Tuple[int, int]) -> float:
         return ((p2[0] - p1[0]) ** 2 + (p2[1] - p1[1]) ** 2) ** 0.5
 
-    def is_pinch(self, landmarks: List[Tuple[int, int, int]]) -> bool:
+    # -----------------------------
+    # Pinch Detection
+    # -----------------------------
+    def pinch_active(self, landmarks) -> bool:
         if not landmarks:
             return False
 
@@ -43,26 +61,64 @@ class GestureRecognizer:
         if thumb is None or index is None:
             return False
 
-        return self._distance(thumb, index) <= self._pinch_threshold
+        return self._distance(thumb, index) <= self.PINCH_ON
 
-    def detect_click_event(self, landmarks: List[Tuple[int, int, int]]) -> bool:
+    # -----------------------------
+    # Drag State Update
+    # -----------------------------
+    def update_drag_state(self, landmarks) -> None:
         """
-        Returns True only once when pinch starts (False → True transition).
+        Updates dragging state:
+        - Long pinch hold triggers drag mode
+        - Release pinch resets drag
         """
 
         if not landmarks:
             self.reset_state()
+            return
+
+        if self.pinch_active(landmarks):
+            self._pinch_frames += 1
+
+            # Start drag after long hold
+            if self._pinch_frames >= self.DRAG_HOLD_FRAMES:
+                self._dragging = True
+
+        else:
+            # Pinch released → reset everything
+            self.reset_state()
+
+    def is_dragging(self) -> bool:
+        return self._dragging
+
+    # -----------------------------
+    # Click Detection
+    # -----------------------------
+    def detect_click_event(self, landmarks) -> bool:
+        """
+        Click triggers ONLY if pinch is short
+        and drag has NOT started.
+        """
+
+        if not landmarks:
             return False
 
-        current_pinch = self.is_pinch(landmarks)
+        if self.pinch_active(landmarks):
 
-        click = False
-        if current_pinch and not self._pinch_active:
-            click = True
+            if (
+                self._pinch_frames == self.CLICK_HOLD_FRAMES
+                and not self._dragging
+                and not self._click_sent
+            ):
+                self._click_sent = True
+                return True
 
-        self._pinch_active = current_pinch
-        return click
+        return False
 
+    # -----------------------------
+    # Reset
+    # -----------------------------
     def reset_state(self) -> None:
-        """Reset pinch debounce state."""
-        self._pinch_active = False
+        self._pinch_frames = 0
+        self._dragging = False
+        self._click_sent = False

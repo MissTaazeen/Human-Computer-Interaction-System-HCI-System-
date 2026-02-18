@@ -1,28 +1,41 @@
 from typing import Optional
 
 import pyautogui
-from core.smoothing import Smoother 
+
+from core.smoothing import Smoother
+from app import config
+
 
 class CursorMapper:
     """
-    Maps hand landmark coordinates (camera frame space) to screen coordinates
-    and moves the OS cursor using PyAutoGUI.
+    Phase 4 Cursor Mapper (Improved)
 
-    Phase 1:
-    - Only cursor movement (no clicking)
-    - Designed to be used with the index fingertip landmark
-    - Integrates a Smoother instance for stable motion
+    Fixes:
+    - Cursor too fast → speed scaling added
+    - Cursor jump after hand lost → freeze + smooth resume
     """
 
     def __init__(self, smoother: Optional[Smoother] = None) -> None:
-        """
-        Args:
-            smoother: Optional Smoother instance for cursor stabilization.
-                      If None, raw coordinates are used.
-        """
-        self._screen_width, self._screen_height = pyautogui.size()  # Get primary screen size[web:59][web:60][web:66]
+        self._screen_width, self._screen_height = pyautogui.size()
         self._smoother = smoother
 
+        # Freeze control
+        self._frozen = False
+
+    # -----------------------------
+    # Freeze / Resume
+    # -----------------------------
+    def freeze(self) -> None:
+        """Stop cursor updates when hand is lost."""
+        self._frozen = True
+
+    def resume(self) -> None:
+        """Resume cursor updates when hand returns."""
+        self._frozen = False
+
+    # -----------------------------
+    # Mapping
+    # -----------------------------
     def _map_to_screen(
         self,
         x_frame: int,
@@ -30,28 +43,18 @@ class CursorMapper:
         frame_width: int,
         frame_height: int,
     ) -> tuple[float, float]:
-        """
-        Map camera frame coordinates to screen coordinates.
 
-        Args:
-            x_frame: X coordinate in frame pixels.
-            y_frame: Y coordinate in frame pixels.
-            frame_width: Width of the camera frame in pixels.
-            frame_height: Height of the camera frame in pixels.
-
-        Returns:
-            (screen_x, screen_y): Coordinates on the primary screen.
-        """
-        # Normalize to [0, 1]
         x_norm = x_frame / float(frame_width)
         y_norm = y_frame / float(frame_height)
 
-        # Scale to screen size
         screen_x = x_norm * self._screen_width
-        screen_y = y_norm * self._screen_height  # Direct mapping; adjust if you use ROI[web:64][web:67]
+        screen_y = y_norm * self._screen_height
 
         return screen_x, screen_y
 
+    # -----------------------------
+    # Cursor Movement (Controlled)
+    # -----------------------------
     def move_cursor(
         self,
         x_frame: int,
@@ -59,26 +62,39 @@ class CursorMapper:
         frame_width: int,
         frame_height: int,
     ) -> None:
-        """
-        Map frame coordinates to screen space, smooth them, and move the cursor.
 
-        Args:
-            x_frame: Index fingertip x-coordinate in frame pixels.
-            y_frame: Index fingertip y-coordinate in frame pixels.
-            frame_width: Width of the current frame.
-            frame_height: Height of the current frame.
-        """
-        # Map camera coordinates → screen coordinates
-        screen_x, screen_y = self._map_to_screen(
-            x_frame=x_frame,
-            y_frame=y_frame,
-            frame_width=frame_width,
-            frame_height=frame_height,
+        # If frozen, do nothing
+        if self._frozen and config.HAND_LOST_FREEZE:
+            return
+
+        # Map → Screen target
+        target_x, target_y = self._map_to_screen(
+            x_frame, y_frame, frame_width, frame_height
         )
 
-        # Apply smoothing if provided
+        # Smooth target
         if self._smoother is not None:
-            screen_x, screen_y = self._smoother.smooth(screen_x, screen_y)
+            target_x, target_y = self._smoother.smooth(target_x, target_y)
 
-        # Move the OS cursor (no clicking in Phase 1)
-        pyautogui.moveTo(screen_x, screen_y)  # Absolute movement[web:59][web:61][web:68]
+        # Current cursor position
+        current_x, current_y = pyautogui.position()
+
+        # Compute movement distance
+        dx = target_x - current_x
+        dy = target_y - current_y
+
+        distance = (dx**2 + dy**2) ** 0.5
+
+        # -----------------------------
+        # DEADZONE FILTER (KEY FIX)
+        # -----------------------------
+        if distance < config.MOVEMENT_DEADZONE_PX:
+            return  # Ignore tiny jitter/noise
+
+        # Speed-controlled movement
+        speed = config.CURSOR_SPEED
+
+        new_x = current_x + dx * speed
+        new_y = current_y + dy * speed
+
+        pyautogui.moveTo(new_x, new_y)

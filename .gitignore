@@ -1,29 +1,30 @@
-# Python virtual environment
-.venv/
-venv/
-env/
-
-# Python cache
+# -----------------------------
+# Python Cache
+# -----------------------------
 __pycache__/
-*.py[cod]
-*$py.class
-*.so
+*.pyc
+*.pyo
 
-# pytest cache
-.pytest_cache/
-.coverage
-htmlcov/
+# -----------------------------
+# Virtual Environment
+# -----------------------------
+.venv/
 
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
+# -----------------------------
+# PyInstaller Outputs
+# -----------------------------
+dist/
+build/
+*.spec
 
-# OS
-.DS_Store
+# -----------------------------
+# Executables
+# -----------------------------
+*.exe
+*.pkg
+
+# -----------------------------
+# OS Junk
+# -----------------------------
 Thumbs.db
-
-# Project specific
-*.log
 .DS_Store

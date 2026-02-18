@@ -1,0 +1,7 @@
+{
+  "pinch_threshold": 40,
+  "smoothing_alpha": 0.08,
+  "drag_hold_frames": 8,
+  "click_hold_frames": 3,
+  "enable_clicks": true
+}
