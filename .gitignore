@@ -1,5 +1,5 @@
 # -----------------------------
-# Python Cache (IMPORTANT)
+# Python Cache
 # -----------------------------
 __pycache__/
 *.pyc
@@ -11,7 +11,7 @@ __pycache__/
 .venv/
 
 # -----------------------------
-# PyInstaller Build Outputs
+# PyInstaller Outputs
 # -----------------------------
 dist/
 build/
@@ -26,5 +26,5 @@ build/
 # -----------------------------
 # OS Junk
 # -----------------------------
-.DS_Store
 Thumbs.db
+.DS_Store
